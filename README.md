@@ -52,12 +52,39 @@ resource "puppetca_certificate" "ec2instance" {
   name   = "0a7842c26ad1.foo.com"
   usedby = aws_instance.ec2instance.id
 }
+
+# Example: Passing a CSR to the Puppet CA
+resource "tls_private_key" "example" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_cert_request" "example" {
+  private_key_pem = tls_private_key.example.private_key_pem
+
+  subject {
+    common_name  = "foo.example.com"
+    organization = "Example Org"
+  }
+}
+
+resource "puppetca_certificate" "csr_example" {
+  name = "foo.example.com"
+  csr  = tls_cert_request.example.cert_request_pem
+  sign = true
+}
 ```
 
 The first `puppetca_certificate` resource, `test`, will remove the certificate if a destroy plan is run.
 The second `puppetca_certificate` resource, `ec2instance`, will remove the certificate if Terraform destroys the EC2 instance.
 
 The `usedby` parameter can be populated as a resource parameter to drive the removal of the certificate from the Puppet CA at the desired time.  In the example above, if a Terraform plan has to recreate the EC2 instance, the certificate will be removed when the EC2 instance is destroyed since each EC2 instance is assigned a new instance id.
+
+The `csr` parameter allows you to pass a Certificate Signing Request (CSR) to the Puppet CA. In the example above:
+- A private key is generated using the `tls_private_key` resource.
+- A CSR is created using the `tls_cert_request` resource.
+- The CSR is passed to the `puppetca_certificate` resource using the `csr` attribute.
+- The `sign` parameter ensures the certificate is signed automatically after submission.
 
 The provider can also be configured using environment variables:
 
