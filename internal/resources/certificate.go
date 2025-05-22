@@ -28,6 +28,7 @@ type CertificateModel struct {
 	Sign        types.Bool   `tfsdk:"sign"`
 	UsedBy      types.String `tfsdk:"usedby"`
 	Content     types.String `tfsdk:"cert"`
+	CSR         types.String `tfsdk:"csr"` // New attribute for CSR
 }
 
 func (r *Certificate) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -59,6 +60,10 @@ func (r *Certificate) Schema(ctx context.Context, req resource.SchemaRequest, re
 			"cert": schema.StringAttribute{
 				Computed: true,
 			},
+			"csr": schema.StringAttribute{
+				Optional:    true,
+				Description: "Certificate Signing Request (CSR) to be submitted to the Puppet server.",
+			},
 		},
 	}
 }
@@ -75,12 +80,46 @@ func (r *Certificate) Create(ctx context.Context, req resource.CreateRequest, re
 	nodeName := plan.NodeName.ValueString()
 	environment := plan.Environment.ValueString()
 	sign := plan.Sign.ValueBool()
+	csr := plan.CSR.ValueString()
 
-	certificate, err := retryGetOrSignCert(ctx, r.provider.Client(), nodeName, environment, sign)
+	// Validation: Prevent both `sign` and `csr` from being set
+	if sign && csr != "" {
+		resp.Diagnostics.AddError(
+			"Invalid Configuration",
+			"The `sign` and `csr` attributes cannot be used together. Either provide a CSR or request signing, but not both.",
+		)
+		return
+	}
+
+	var certificate string
+	var err error
+
+	if csr != "" {
+		// If CSR is provided, submit it to the Puppet server
+		err = submitCSR(ctx, r.provider.Client(), nodeName, environment, csr)
+		if err != nil {
+			resp.Diagnostics.AddError("Failed to submit CSR", "Reason: "+err.Error())
+			return
+		}
+
+		// Optionally sign the certificate if requested
+		if sign {
+			err = signCert(ctx, r.provider.Client(), nodeName, environment)
+			if err != nil {
+				resp.Diagnostics.AddError("Failed to sign certificate", "Reason: "+err.Error())
+				return
+			}
+		}
+
+		// Retrieve the signed certificate
+		certificate, err = getCert(ctx, r.provider.Client(), nodeName, environment)
+	} else {
+		// If no CSR is provided, proceed with the existing logic
+		certificate, err = retryGetOrSignCert(ctx, r.provider.Client(), nodeName, environment, sign)
+	}
 
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create certificate", "Reason: "+err.Error())
-
 		return
 	}
 
@@ -332,6 +371,19 @@ func deleteCert(ctx context.Context, client *puppetca.Client, nodeName string, e
 	err := client.DeleteCertByName(nodeName, environment)
 
 	tflog.Trace(ctx, "Requested certificate deletion", log.MergeFields(logFields, log.ErrorField(err)))
+
+	return err
+}
+
+func submitCSR(ctx context.Context, client *puppetca.Client, nodeName string, environment string, csr string) error {
+	logFields := log.CertificateFields(nodeName, environment)
+
+	tflog.Trace(ctx, "Submitting CSR to Puppet server", logFields)
+
+	// Use SubmitRequest instead of SubmitCSR
+	err := client.SubmitRequest(nodeName, csr, environment)
+
+	tflog.Trace(ctx, "Submitted CSR to Puppet server", log.MergeFields(logFields, log.ErrorField(err)))
 
 	return err
 }
