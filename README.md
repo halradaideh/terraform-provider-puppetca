@@ -41,7 +41,6 @@ provider puppetca {
   cert = "certs/puppet.crt"
   key = "certs/puppet.key"
   ca = "certs/ca.pem"
-
 }
 
 resource "puppetca_certificate" "test" {
@@ -73,10 +72,22 @@ resource "puppetca_certificate" "csr_example" {
   csr  = tls_cert_request.example.cert_request_pem
   sign = true
 }
+
+resource "vm_provider" "vm" {
+  name = "example-instance"
+  tags = {
+    Name = "example-instance"
+  }
+  data = <<EOF
+  BLA BLA
+  key = "${puppetca_certificate.csr_example.cert}"
+}
+EOF
 ```
 
 The first `puppetca_certificate` resource, `test`, will remove the certificate if a destroy plan is run.
 The second `puppetca_certificate` resource, `ec2instance`, will remove the certificate if Terraform destroys the EC2 instance.
+The third `puppetca_certificate` resource, `csr_example`, will submit a CSR to the Puppet CA and sign it automatically.
 
 The `usedby` parameter can be populated as a resource parameter to drive the removal of the certificate from the Puppet CA at the desired time.  In the example above, if a Terraform plan has to recreate the EC2 instance, the certificate will be removed when the EC2 instance is destroyed since each EC2 instance is assigned a new instance id.
 
@@ -144,4 +155,52 @@ In order to run the full suite of Acceptance tests, run `make testacc`.
 
 ```sh
 $ make testacc
+```
+
+In order to test the code locally, you can use `make local-install` to deploy the generated provider.
+
+```hcl
+terraform {
+  required_providers {
+    puppetca = {
+      source  = "local/puppetca/puppetca"
+      version = "0.1.0"
+    }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.1"
+    }
+  }
+}
+
+locals {
+  FQDN = "foo.example.com"
+}
+
+provider puppetca {
+  url = "https://puppetca.example.com:8140"
+  cert = "certs/puppet.crt"
+  key = "certs/puppet.key"
+  ca = "certs/ca.pem"
+}
+
+# Example: Passing a CSR to the Puppet CA
+resource "tls_private_key" "example" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_cert_request" "example" {
+  private_key_pem = tls_private_key.example.private_key_pem
+
+  subject {
+    common_name  = local.FQDN
+    organization = "Example Org"
+  }
+}
+
+resource "puppetca_certificate" "csr_example" {
+  name = local.FQDN
+  csr  = tls_cert_request.example.cert_request_pem
+}
 ```
