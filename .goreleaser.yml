@@ -49,6 +49,13 @@ signs:
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
+    # Only sign if GPG_FINGERPRINT is available
+    ids:
+      - default
+    cmd: gpg
+    signature: "${artifact}.sig"
+    # Skip signing if GPG_FINGERPRINT is empty
+    skip: '{{ if .Env.GPG_FINGERPRINT }}false{{ else }}true{{ end }}'
 release:
   extra_files:
     - glob: 'terraform-registry-manifest.json'
