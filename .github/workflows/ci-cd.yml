@@ -243,7 +243,7 @@ jobs:
           ls -la "${BINARY_NAME}"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: terraform-provider-puppetca-${{ matrix.goos }}-${{ matrix.goarch }}
           path: terraform-provider-puppetca*
