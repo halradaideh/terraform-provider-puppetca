@@ -44,14 +44,13 @@ jobs:
           IS_RELEASE="false"
           
           if [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/master" || "${{ github.ref }}" == "refs/heads/main") ]]; then
-            echo "Push to master/main - running tests"
+            echo "Push to master/main - running tests and deploying"
             SHOULD_TEST="true"
+            SHOULD_DEPLOY="true"
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "Manual trigger"
+            echo "Manual trigger - running tests and deploying"
             SHOULD_TEST="true"
-            if [[ "${{ github.event.inputs.force_deploy }}" == "true" ]]; then
-              SHOULD_DEPLOY="true"
-            fi
+            SHOULD_DEPLOY="true"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "Pull request event"
             if [[ "${{ contains(github.event.pull_request.labels.*.name, 'ready-to-test') }}" == "true" ]]; then
@@ -84,10 +83,14 @@ jobs:
             if [[ "${PR_TITLE}" =~ v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
               VERSION=$(echo "${PR_TITLE}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[0-9]+)?)?')
             else
-              VERSION="v1.0.0-dev.$(date +%Y%m%d%H%M%S)"
+              VERSION="v2.1.0-dev.$(date +%Y%m%d%H%M%S)"
             fi
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # For manual dispatch, use v2.1.0 as the target version
+            VERSION="v2.1.0"
           else
-            VERSION="v1.0.0-dev.$(date +%Y%m%d%H%M%S)"
+            # For push to master, use v2.1.0
+            VERSION="v2.1.0"
           fi
           
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -199,7 +202,7 @@ jobs:
   # Acceptance tests (optional)
   acceptance-tests:
     needs: [check-triggers, quality-checks, test, build-check]
-    if: needs.check-triggers.outputs.should-test == 'true' && contains(github.event.pull_request.labels.*.name, 'run-acceptance-tests')
+    if: needs.check-triggers.outputs.should-test == 'true' && (contains(github.event.pull_request.labels.*.name, 'run-acceptance-tests') || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -277,11 +280,17 @@ jobs:
           VERSION="${{ needs.check-triggers.outputs.version }}"
           echo "Creating tag: ${VERSION}"
           
-          # Create and push tag
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${VERSION}" -m "Release ${VERSION}"
-          git push origin "${VERSION}"
+          # Check if tag already exists
+          if git rev-parse "${VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} already exists, skipping tag creation"
+          else
+            # Create and push tag
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "${VERSION}" -m "Release ${VERSION}"
+            git push origin "${VERSION}"
+            echo "Tag ${VERSION} created and pushed"
+          fi
           
           echo "tag=${VERSION}" >> $GITHUB_OUTPUT
 
