@@ -1,10 +1,12 @@
 Puppet CA Terraform Provider
 =============================
 
-[![Terraform Registry Version](https://img.shields.io/badge/dynamic/json?color=blue&label=registry&query=%24.version&url=https%3A%2F%2Fregistry.terraform.io%2Fv1%2Fproviders%2Fcamptocamp%2Fpuppetca)](https://registry.terraform.io/providers/camptocamp/puppetca)
-[![Go Report Card](https://goreportcard.com/badge/github.com/camptocamp/terraform-provider-puppetca)](https://goreportcard.com/report/github.com/camptocamp/terraform-provider-puppetca)
-[![Build Status](https://travis-ci.org/camptocamp/terraform-provider-puppetca.svg?branch=master)](https://travis-ci.org/camptocamp/terraform-provider-puppetca)
-[![By Camptocamp](https://img.shields.io/badge/by-camptocamp-fb7047.svg)](http://www.camptocamp.com)
+[![CI/CD Pipeline](https://github.com/halradaideh/terraform-provider-puppetca/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/halradaideh/terraform-provider-puppetca/actions/workflows/ci-cd.yml)
+[![Terraform Registry Version](https://img.shields.io/badge/dynamic/json?color=blue&label=registry&query=%24.version&url=https%3A%2F%2Fregistry.terraform.io%2Fv1%2Fproviders%2Fhalradaideh%2Fpuppetca)](https://registry.terraform.io/providers/halradaideh/puppetca)
+[![Go Report Card](https://goreportcard.com/badge/github.com/halradaideh/terraform-provider-puppetca)](https://goreportcard.com/report/github.com/halradaideh/terraform-provider-puppetca)
+[![GitHub Release](https://img.shields.io/github/v/release/halradaideh/terraform-provider-puppetca)](https://github.com/halradaideh/terraform-provider-puppetca/releases)
+[![License](https://img.shields.io/github/license/halradaideh/terraform-provider-puppetca)](https://github.com/halradaideh/terraform-provider-puppetca/blob/master/LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/halradaideh/terraform-provider-puppetca)](https://github.com/halradaideh/terraform-provider-puppetca/blob/master/go.mod)
 
 This Terraform provider allows to connect to a Puppet Certificate Authority to verify that node certificates were signed, and clean them upon decommissioning the node.
 
@@ -259,3 +261,51 @@ resource "puppetca_certificate" "csr_example" {
   }
 }
 ```
+
+## CI/CD and Development Workflows
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+### 🔄 **Unified CI/CD Pipeline**
+- **CI Triggers**: Pull requests with `ready-to-test` label, pushes to master
+- **CD Triggers**: Pull requests with `ready-to-deploy` label, manual workflow dispatch
+- **Quality Checks**: Go formatting, linting (golangci-lint), static analysis
+- **Testing**: Unit tests on Go 1.20 & 1.21, race detection
+- **Multi-Architecture Builds**: Linux, macOS, Windows, FreeBSD (amd64, arm64, etc.)
+- **Release Process**: GoReleaser with GPG signing, automatic tagging
+- **Registry**: Automatic publication to `halradaideh/puppetca` provider
+- **Artifacts**: Signed binaries, SHA256 checksums, release notes
+
+### 📋 **Development Commands**
+```bash
+# Run all CI checks locally
+make ci-test
+
+# Run quality checks (format, lint, vet)
+make quality
+
+# Build for multiple architectures
+make ci-build
+
+# Prepare for release
+make pre-release
+
+# Clean build artifacts
+make clean
+```
+
+### 🏷️ **Creating Releases**
+```bash
+# Method 1: Using PR labels (recommended)
+# 1. Create a PR with title containing version (e.g., "Release v1.0.1")
+# 2. Add the "ready-to-deploy" label to trigger release
+
+# Method 2: Manual workflow dispatch
+# Go to Actions tab → CI/CD Pipeline → Run workflow → Enable "Force deployment"
+```
+
+For detailed CI/CD documentation, see [docs/CICD.md](docs/CICD.md).
+
+### 📦 **Required Secrets for Releases**
+- `GPG_PRIVATE_KEY`: GPG private key for signing releases
+- `GPG_PASSPHRASE`: Passphrase for the GPG private key
