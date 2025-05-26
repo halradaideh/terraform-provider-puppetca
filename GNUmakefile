@@ -56,7 +56,7 @@ fmtcheck:
 
 lint:
 	@echo "==> Checking source code against linters..."
-	@GOGC=30 golangci-lint run ./$(PKG_NAME)
+	@golangci-lint run ./...
 
 test-compile:
 	@if [ "$(TEST)" = "./..." ]; then \
@@ -71,6 +71,40 @@ vendor:
 	go mod vendor
 
 vet:
-	go vet $<
+	go vet ./...
 
-.PHONY: build build-local test testacc fmt fmtcheck lint test-compile vendor local-install local-install-modern local-install-dev install-local
+# CI/CD targets
+ci-test: fmtcheck lint vet test
+	@echo "==> All CI tests passed!"
+
+ci-build: fmtcheck
+	@echo "==> Building for multiple architectures..."
+	@GOOS=linux GOARCH=amd64 go build -o dist/$(PLUGIN_NAME)-linux-amd64 .
+	@GOOS=linux GOARCH=arm64 go build -o dist/$(PLUGIN_NAME)-linux-arm64 .
+	@GOOS=darwin GOARCH=amd64 go build -o dist/$(PLUGIN_NAME)-darwin-amd64 .
+	@GOOS=darwin GOARCH=arm64 go build -o dist/$(PLUGIN_NAME)-darwin-arm64 .
+	@GOOS=windows GOARCH=amd64 go build -o dist/$(PLUGIN_NAME)-windows-amd64.exe .
+	@echo "==> Multi-architecture build complete!"
+
+clean:
+	@echo "==> Cleaning build artifacts..."
+	@rm -rf dist/
+	@rm -f $(PLUGIN_NAME)
+	@rm -f $(PLUGIN_NAME).exe
+	@echo "==> Clean complete!"
+
+# Install golangci-lint for local development
+install-lint:
+	@echo "==> Installing golangci-lint..."
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.54.2
+	@echo "==> golangci-lint installed!"
+
+# Run all quality checks
+quality: fmt fmtcheck lint vet
+	@echo "==> All quality checks passed!"
+
+# Prepare for release
+pre-release: clean quality test ci-build
+	@echo "==> Pre-release checks complete!"
+
+.PHONY: build build-local test testacc fmt fmtcheck lint test-compile vendor local-install local-install-modern local-install-dev install-local vet ci-test ci-build clean install-lint quality pre-release

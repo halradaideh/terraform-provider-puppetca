@@ -1,0 +1,483 @@
+name: CI/CD Pipeline
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled]
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment (skip label check)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY_USERNAME: ${{ github.actor }}
+  GO_VERSION: '1.21'
+
+jobs:
+  # Check what should run based on labels and context
+  check-triggers:
+    runs-on: ubuntu-latest
+    outputs:
+      should-test: ${{ steps.check.outputs.should-test }}
+      should-deploy: ${{ steps.check.outputs.should-deploy }}
+      is-release: ${{ steps.check.outputs.is-release }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check triggers
+        id: check
+        run: |
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          
+          # Default values
+          SHOULD_TEST="false"
+          SHOULD_DEPLOY="false"
+          IS_RELEASE="false"
+          
+          if [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/master" || "${{ github.ref }}" == "refs/heads/main") ]]; then
+            echo "Push to master/main - running tests"
+            SHOULD_TEST="true"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "Manual trigger"
+            SHOULD_TEST="true"
+            if [[ "${{ github.event.inputs.force_deploy }}" == "true" ]]; then
+              SHOULD_DEPLOY="true"
+            fi
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "Pull request event"
+            if [[ "${{ contains(github.event.pull_request.labels.*.name, 'ready-to-test') }}" == "true" ]]; then
+              echo "Found ready-to-test label"
+              SHOULD_TEST="true"
+            fi
+            if [[ "${{ contains(github.event.pull_request.labels.*.name, 'ready-to-deploy') }}" == "true" ]]; then
+              echo "Found ready-to-deploy label"
+              SHOULD_TEST="true"
+              SHOULD_DEPLOY="true"
+              IS_RELEASE="true"
+            fi
+          fi
+          
+          echo "should-test=${SHOULD_TEST}" >> $GITHUB_OUTPUT
+          echo "should-deploy=${SHOULD_DEPLOY}" >> $GITHUB_OUTPUT
+          echo "is-release=${IS_RELEASE}" >> $GITHUB_OUTPUT
+          
+          echo "Will test: ${SHOULD_TEST}"
+          echo "Will deploy: ${SHOULD_DEPLOY}"
+          echo "Is release: ${IS_RELEASE}"
+
+      - name: Extract version for release
+        id: version
+        if: steps.check.outputs.should-deploy == 'true'
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Extract version from PR title or use timestamp
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            if [[ "${PR_TITLE}" =~ v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+              VERSION=$(echo "${PR_TITLE}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[0-9]+)?)?')
+            else
+              VERSION="v1.0.0-dev.$(date +%Y%m%d%H%M%S)"
+            fi
+          else
+            VERSION="v1.0.0-dev.$(date +%Y%m%d%H%M%S)"
+          fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Release version: ${VERSION}"
+
+  # Quality checks and testing
+  quality-checks:
+    needs: check-triggers
+    if: needs.check-triggers.outputs.should-test == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run go mod tidy
+        run: go mod tidy
+
+      - name: Check if go.mod is tidy
+        run: |
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "go.mod or go.sum is not tidy"
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Format check
+        run: make fmtcheck
+
+      - name: Run gofmt
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Code is not formatted. Please run 'make fmt'"
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
+
+      - name: Run linter
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+          golangci-lint run ./...
+
+      - name: Run go vet
+        run: go vet ./...
+
+  # Unit tests
+  test:
+    needs: [check-triggers, quality-checks]
+    if: needs.check-triggers.outputs.should-test == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.20', '1.21']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Run tests with race detector
+        run: go test -race -short ./...
+
+  # Build for multiple architectures
+  build:
+    needs: [check-triggers, quality-checks]
+    if: needs.check-triggers.outputs.should-test == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+          - goos: linux
+            goarch: 386
+          # macOS
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          # Windows
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: windows
+            goarch: 386
+          # FreeBSD
+          - goos: freebsd
+            goarch: amd64
+          - goos: freebsd
+            goarch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          BINARY_NAME="terraform-provider-puppetca"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          
+          go build -trimpath -ldflags="-s -w -X main.version=${{ needs.check-triggers.outputs.version || 'dev' }}" -o "${BINARY_NAME}" .
+          
+          # Verify the binary was created
+          if [ ! -f "${BINARY_NAME}" ]; then
+            echo "Failed to create binary for ${{ matrix.goos }}/${{ matrix.goarch }}"
+            exit 1
+          fi
+          
+          echo "Successfully built ${BINARY_NAME} for ${{ matrix.goos }}/${{ matrix.goarch }}"
+          ls -la "${BINARY_NAME}"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: terraform-provider-puppetca-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: terraform-provider-puppetca*
+          retention-days: 30
+
+  # Acceptance tests (optional)
+  acceptance-tests:
+    needs: [check-triggers, quality-checks, test]
+    if: needs.check-triggers.outputs.should-test == 'true' && contains(github.event.pull_request.labels.*.name, 'run-acceptance-tests')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run acceptance tests
+        run: make testacc
+        env:
+          TF_ACC: 1
+
+  # Release and deployment
+  release:
+    needs: [check-triggers, quality-checks, test, build]
+    if: needs.check-triggers.outputs.should-deploy == 'true' && (success() || failure()) && !cancelled()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      release-created: ${{ steps.release.outputs.release-created }}
+      release-url: ${{ steps.release.outputs.release-url }}
+    steps:
+      - name: Check prerequisites
+        run: |
+          if [[ "${{ needs.quality-checks.result }}" != "success" ]]; then
+            echo "Quality checks failed - cannot deploy"
+            exit 1
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "Tests failed - cannot deploy"
+            exit 1
+          fi
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "Build failed - cannot deploy"
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Import GPG key
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Create release tag
+        id: tag
+        run: |
+          VERSION="${{ needs.check-triggers.outputs.version }}"
+          echo "Creating tag: ${VERSION}"
+          
+          # Create and push tag
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
+          
+          echo "tag=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        id: goreleaser
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+
+      - name: Set release outputs
+        id: release
+        run: |
+          echo "release-created=true" >> $GITHUB_OUTPUT
+          echo "release-url=https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.tag }}" >> $GITHUB_OUTPUT
+
+  # Update status and summary
+  status-update:
+    needs: [check-triggers, quality-checks, test, build, release]
+    if: always() && needs.check-triggers.outputs.should-test == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update PR status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr_number = context.payload.pull_request.number;
+            
+            let status = "✅ **CI/CD Pipeline Completed Successfully**";
+            let details = [];
+            
+            // Check job results
+            const qualityResult = "${{ needs.quality-checks.result }}";
+            const testResult = "${{ needs.test.result }}";
+            const buildResult = "${{ needs.build.result }}";
+            const releaseResult = "${{ needs.release.result }}";
+            
+            if (qualityResult === "success") {
+              details.push("✅ Quality checks passed");
+            } else if (qualityResult === "failure") {
+              details.push("❌ Quality checks failed");
+              status = "❌ **CI/CD Pipeline Failed**";
+            }
+            
+            if (testResult === "success") {
+              details.push("✅ Tests passed");
+            } else if (testResult === "failure") {
+              details.push("❌ Tests failed");
+              status = "❌ **CI/CD Pipeline Failed**";
+            }
+            
+            if (buildResult === "success") {
+              details.push("✅ Multi-architecture build successful");
+            } else if (buildResult === "failure") {
+              details.push("❌ Build failed");
+              status = "❌ **CI/CD Pipeline Failed**";
+            }
+            
+            if ("${{ needs.check-triggers.outputs.should-deploy }}" === "true") {
+              if (releaseResult === "success") {
+                details.push("✅ Release created successfully");
+                details.push("🔗 [Release URL](${{ needs.release.outputs.release-url }})");
+              } else if (releaseResult === "failure") {
+                details.push("❌ Release failed");
+                status = "❌ **CI/CD Pipeline Failed**";
+              }
+            }
+            
+            const body = `${status}
+            
+            ${details.join('\n')}
+            
+            **Provider**: \`halradaideh/puppetca\`
+            **Version**: \`${{ needs.check-triggers.outputs.version || 'dev' }}\`
+            **Workflow**: [View Details](https://github.com/${owner}/${repo}/actions/runs/${{ github.run_id }})`;
+            
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: pr_number,
+              body
+            });
+
+      - name: Create job summary
+        run: |
+          echo "## 🚀 halradaideh/puppetca CI/CD Pipeline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.quality-checks.result }}" == "success" ]]; then
+            echo "✅ **Quality Checks**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Quality Checks**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.test.result }}" == "success" ]]; then
+            echo "✅ **Unit Tests**: Passed (Go 1.20 & 1.21)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Unit Tests**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.build.result }}" == "success" ]]; then
+            echo "✅ **Multi-Architecture Build**: Passed" >> $GITHUB_STEP_SUMMARY
+            echo "  - Linux (amd64, arm64, arm, 386)" >> $GITHUB_STEP_SUMMARY
+            echo "  - macOS (amd64, arm64)" >> $GITHUB_STEP_SUMMARY
+            echo "  - Windows (amd64, arm64, 386)" >> $GITHUB_STEP_SUMMARY
+            echo "  - FreeBSD (amd64, arm64)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Multi-Architecture Build**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.check-triggers.outputs.should-deploy }}" == "true" ]]; then
+            if [[ "${{ needs.release.result }}" == "success" ]]; then
+              echo "✅ **Release**: Created successfully" >> $GITHUB_STEP_SUMMARY
+              echo "  - **Version**: ${{ needs.check-triggers.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+              echo "  - **URL**: ${{ needs.release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+              echo "  - **Registry**: https://registry.terraform.io/providers/halradaideh/puppetca" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ **Release**: Failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Workflow Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository**: halradaideh/terraform-provider-puppetca" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "- **PR**: #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Labels**: ${{ join(github.event.pull_request.labels.*.name, ', ') }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Final status check
+        run: |
+          if [[ "${{ needs.quality-checks.result }}" != "success" || "${{ needs.test.result }}" != "success" || "${{ needs.build.result }}" != "success" ]]; then
+            echo "One or more critical jobs failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.check-triggers.outputs.should-deploy }}" == "true" && "${{ needs.release.result }}" != "success" ]]; then
+            echo "Release was requested but failed"
+            exit 1
+          fi
+          
+          echo "All jobs completed successfully! 🎉" 
