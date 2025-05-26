@@ -8,6 +8,7 @@ require (
 	github.com/camptocamp/go-puppetca v0.0.0-20220207140217-c3faf5528998
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/hashicorp/terraform-plugin-framework v1.4.2
+	github.com/hashicorp/terraform-plugin-framework-timeouts v0.4.0
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 )
 

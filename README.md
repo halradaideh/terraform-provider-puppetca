@@ -71,6 +71,12 @@ resource "puppetca_certificate" "csr_example" {
   name = "foo.example.com"
   csr  = tls_cert_request.example.cert_request_pem
   sign = true
+
+  timeouts {
+    create = "60m"
+    update = "30m"
+    delete = "10m"
+  }
 }
 
 resource "vm_provider" "vm" {
@@ -96,6 +102,31 @@ The `csr` parameter allows you to pass a Certificate Signing Request (CSR) to th
 - A CSR is created using the `tls_cert_request` resource.
 - The CSR is passed to the `puppetca_certificate` resource using the `csr` attribute.
 - The `sign` parameter ensures the certificate is signed automatically after submission.
+
+## Timeouts
+
+**New in v1.0.0:** The provider now supports configurable timeouts for certificate operations to prevent hanging operations.
+
+```hcl
+resource "puppetca_certificate" "example" {
+  name = "example-node"
+  env  = "production"
+  sign = true
+
+  timeouts {
+    create = "60m"  # Default: 20m
+    update = "30m"  # Default: 20m
+    delete = "10m"  # Default: 20m
+  }
+}
+```
+
+Timeout values can be specified in:
+- `s` for seconds
+- `m` for minutes  
+- `h` for hours
+
+If no timeout is specified, operations default to 20 minutes. This prevents certificate operations from hanging indefinitely when the Puppet CA is slow or unresponsive.
 
 The provider can also be configured using environment variables:
 
@@ -157,14 +188,32 @@ In order to run the full suite of Acceptance tests, run `make testacc`.
 $ make testacc
 ```
 
-In order to test the code locally, you can use `make local-install` to deploy the generated provider.
+## Local Development and Installation
+
+For local development and testing, you can use the following make targets:
+
+```sh
+# Install to development path (recommended for local testing)
+$ make local-install-dev
+
+# Install to legacy path
+$ make local-install
+
+# Install to modern registry path
+$ make local-install-modern
+
+# Install to all paths
+$ make install-local
+```
+
+After installation, use the provider in your Terraform configuration:
 
 ```hcl
 terraform {
   required_providers {
     puppetca = {
       source  = "local/puppetca/puppetca"
-      version = "0.1.0"
+      version = "1.0.0"
     }
     tls = {
       source  = "hashicorp/tls"
@@ -202,5 +251,11 @@ resource "tls_cert_request" "example" {
 resource "puppetca_certificate" "csr_example" {
   name = local.FQDN
   csr  = tls_cert_request.example.cert_request_pem
+
+  timeouts {
+    create = "45m"
+    update = "20m"
+    delete = "5m"
+  }
 }
 ```

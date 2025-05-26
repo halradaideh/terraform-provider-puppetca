@@ -10,6 +10,7 @@ import (
 	"github.com/camptocamp/terraform-provider-puppetca/internal/log"
 	"github.com/camptocamp/terraform-provider-puppetca/internal/provider"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -23,12 +24,13 @@ type Certificate struct {
 }
 
 type CertificateModel struct {
-	NodeName    types.String `tfsdk:"name"`
-	Environment types.String `tfsdk:"env"`
-	Sign        types.Bool   `tfsdk:"sign"`
-	UsedBy      types.String `tfsdk:"usedby"`
-	Content     types.String `tfsdk:"cert"`
-	CSR         types.String `tfsdk:"csr"` // New attribute for CSR
+	NodeName    types.String   `tfsdk:"name"`
+	Environment types.String   `tfsdk:"env"`
+	Sign        types.Bool     `tfsdk:"sign"`
+	UsedBy      types.String   `tfsdk:"usedby"`
+	Content     types.String   `tfsdk:"cert"`
+	CSR         types.String   `tfsdk:"csr"` // New attribute for CSR
+	Timeouts    timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (r *Certificate) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -65,6 +67,13 @@ func (r *Certificate) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Description: "Certificate Signing Request (CSR) to be submitted to the Puppet server.",
 			},
 		},
+		Blocks: map[string]schema.Block{
+			"timeouts": timeouts.Block(ctx, timeouts.Opts{
+				Create: true,
+				Update: true,
+				Delete: true,
+			}),
+		},
 	}
 }
 
@@ -76,6 +85,17 @@ func (r *Certificate) Create(ctx context.Context, req resource.CreateRequest, re
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Get the create timeout, defaulting to 20 minutes if not specified
+	createTimeout, diags := plan.Timeouts.Create(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
 
 	nodeName := plan.NodeName.ValueString()
 	environment := plan.Environment.ValueString()
@@ -170,6 +190,17 @@ func (r *Certificate) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
+	// Get the update timeout, defaulting to 20 minutes if not specified
+	updateTimeout, diags := plan.Timeouts.Update(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
+
 	nodeName := plan.NodeName.ValueString()
 	environment := plan.Environment.ValueString()
 	sign := plan.Sign.ValueBool()
@@ -196,6 +227,17 @@ func (r *Certificate) Delete(ctx context.Context, req resource.DeleteRequest, re
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Get the delete timeout, defaulting to 20 minutes if not specified
+	deleteTimeout, diags := state.Timeouts.Delete(ctx, 20*time.Minute)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
 
 	nodeName := state.NodeName.ValueString()
 	environment := state.Environment.ValueString()

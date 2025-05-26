@@ -23,6 +23,22 @@ output "cert" {
 }
 ```
 
+### Using Timeouts
+
+```hcl
+resource "puppetca_certificate" "mycert" {
+  name = "myhost.example.com"
+  csr  = file("myhost.csr")
+  sign = true
+
+  timeouts {
+    create = "60m"
+    update = "30m"
+    delete = "10m"
+  }
+}
+```
+
 ## Argument Reference
 
 - `name` (String, Required): The node name for the certificate.
@@ -30,6 +46,12 @@ output "cert" {
 - `sign` (Bool, Optional): Whether to sign the certificate after CSR submission. Defaults to `false`.
 - `env` (String, Optional): Puppet environment name.
 - `usedby` (String, Optional): An optional string to indicate who or what uses this certificate.
+
+### Timeouts
+
+- `create` (String, Optional): Timeout for certificate creation operations. Defaults to `20m`.
+- `update` (String, Optional): Timeout for certificate update operations. Defaults to `20m`.
+- `delete` (String, Optional): Timeout for certificate deletion operations. Defaults to `20m`.
 
 ## Attribute Reference
 
