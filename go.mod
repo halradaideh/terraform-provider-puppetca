@@ -1,8 +1,6 @@
 module github.com/camptocamp/terraform-provider-puppetca
 
-go 1.21
-
-toolchain go1.21.3
+go 1.20
 
 require (
 	github.com/camptocamp/go-puppetca v0.0.0-20220207140217-c3faf5528998
