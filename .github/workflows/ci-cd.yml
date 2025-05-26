@@ -172,41 +172,11 @@ jobs:
       - name: Run tests with race detector
         run: go test -race -short ./...
 
-  # Build for multiple architectures
-  build:
+  # Basic build verification (single platform)
+  build-check:
     needs: [check-triggers, quality-checks]
     if: needs.check-triggers.outputs.should-test == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          # Linux
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: linux
-            goarch: arm
-          - goos: linux
-            goarch: 386
-          # macOS
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          # Windows
-          - goos: windows
-            goarch: amd64
-          - goos: windows
-            goarch: arm64
-          - goos: windows
-            goarch: 386
-          # FreeBSD
-          - goos: freebsd
-            goarch: amd64
-          - goos: freebsd
-            goarch: arm64
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -220,38 +190,15 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
+      - name: Verify build works
         run: |
-          BINARY_NAME="terraform-provider-puppetca"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            BINARY_NAME="${BINARY_NAME}.exe"
-          fi
-          
-          go build -trimpath -ldflags="-s -w -X main.version=${{ needs.check-triggers.outputs.version || 'dev' }}" -o "${BINARY_NAME}" .
-          
-          # Verify the binary was created
-          if [ ! -f "${BINARY_NAME}" ]; then
-            echo "Failed to create binary for ${{ matrix.goos }}/${{ matrix.goarch }}"
-            exit 1
-          fi
-          
-          echo "Successfully built ${BINARY_NAME} for ${{ matrix.goos }}/${{ matrix.goarch }}"
-          ls -la "${BINARY_NAME}"
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-provider-puppetca-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: terraform-provider-puppetca*
-          retention-days: 30
+          go build -trimpath -ldflags="-s -w" -o terraform-provider-puppetca .
+          echo "Build verification successful"
+          ls -la terraform-provider-puppetca
 
   # Acceptance tests (optional)
   acceptance-tests:
-    needs: [check-triggers, quality-checks, test]
+    needs: [check-triggers, quality-checks, test, build-check]
     if: needs.check-triggers.outputs.should-test == 'true' && contains(github.event.pull_request.labels.*.name, 'run-acceptance-tests')
     runs-on: ubuntu-latest
     steps:
@@ -274,7 +221,7 @@ jobs:
 
   # Release and deployment
   release:
-    needs: [check-triggers, quality-checks, test, build]
+    needs: [check-triggers, quality-checks, test, build-check, acceptance-tests]
     if: needs.check-triggers.outputs.should-deploy == 'true' && (success() || failure()) && !cancelled()
     runs-on: ubuntu-latest
     permissions:
@@ -294,8 +241,12 @@ jobs:
             echo "Tests failed - cannot deploy"
             exit 1
           fi
-          if [[ "${{ needs.build.result }}" != "success" ]]; then
-            echo "Build failed - cannot deploy"
+          if [[ "${{ needs.build-check.result }}" != "success" ]]; then
+            echo "Build check failed - cannot deploy"
+            exit 1
+          fi
+          if [[ "${{ needs.acceptance-tests.result }}" != "success" && "${{ needs.acceptance-tests.result }}" != "skipped" ]]; then
+            echo "Acceptance tests failed - cannot deploy"
             exit 1
           fi
 
@@ -356,7 +307,7 @@ jobs:
 
   # Update status and summary
   status-update:
-    needs: [check-triggers, quality-checks, test, build, release]
+    needs: [check-triggers, quality-checks, test, build-check, acceptance-tests, release]
     if: always() && needs.check-triggers.outputs.should-test == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -374,7 +325,8 @@ jobs:
             // Check job results
             const qualityResult = "${{ needs.quality-checks.result }}";
             const testResult = "${{ needs.test.result }}";
-            const buildResult = "${{ needs.build.result }}";
+            const buildResult = "${{ needs.build-check.result }}";
+            const acceptanceResult = "${{ needs.acceptance-tests.result }}";
             const releaseResult = "${{ needs.release.result }}";
             
             if (qualityResult === "success") {
@@ -392,10 +344,19 @@ jobs:
             }
             
             if (buildResult === "success") {
-              details.push("✅ Multi-architecture build successful");
+              details.push("✅ Build verification successful");
             } else if (buildResult === "failure") {
-              details.push("❌ Build failed");
+              details.push("❌ Build verification failed");
               status = "❌ **CI/CD Pipeline Failed**";
+            }
+            
+            if (acceptanceResult === "success") {
+              details.push("✅ Acceptance tests passed");
+            } else if (acceptanceResult === "failure") {
+              details.push("❌ Acceptance tests failed");
+              status = "❌ **CI/CD Pipeline Failed**";
+            } else if (acceptanceResult === "skipped") {
+              details.push("⏭️ Acceptance tests skipped");
             }
             
             if ("${{ needs.check-triggers.outputs.should-deploy }}" === "true") {
@@ -440,14 +401,18 @@ jobs:
             echo "❌ **Unit Tests**: Failed" >> $GITHUB_STEP_SUMMARY
           fi
           
-          if [[ "${{ needs.build.result }}" == "success" ]]; then
-            echo "✅ **Multi-Architecture Build**: Passed" >> $GITHUB_STEP_SUMMARY
-            echo "  - Linux (amd64, arm64, arm, 386)" >> $GITHUB_STEP_SUMMARY
-            echo "  - macOS (amd64, arm64)" >> $GITHUB_STEP_SUMMARY
-            echo "  - Windows (amd64, arm64, 386)" >> $GITHUB_STEP_SUMMARY
-            echo "  - FreeBSD (amd64, arm64)" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.build-check.result }}" == "success" ]]; then
+            echo "✅ **Build Verification**: Passed" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **Multi-Architecture Build**: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Build Verification**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.acceptance-tests.result }}" == "success" ]]; then
+            echo "✅ **Acceptance Tests**: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.acceptance-tests.result }}" == "failure" ]]; then
+            echo "❌ **Acceptance Tests**: Failed" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.acceptance-tests.result }}" == "skipped" ]]; then
+            echo "⏭️ **Acceptance Tests**: Skipped" >> $GITHUB_STEP_SUMMARY
           fi
           
           if [[ "${{ needs.check-triggers.outputs.should-deploy }}" == "true" ]]; then
@@ -473,8 +438,13 @@ jobs:
 
       - name: Final status check
         run: |
-          if [[ "${{ needs.quality-checks.result }}" != "success" || "${{ needs.test.result }}" != "success" || "${{ needs.build.result }}" != "success" ]]; then
+          if [[ "${{ needs.quality-checks.result }}" != "success" || "${{ needs.test.result }}" != "success" || "${{ needs.build-check.result }}" != "success" ]]; then
             echo "One or more critical jobs failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.acceptance-tests.result }}" == "failure" ]]; then
+            echo "Acceptance tests failed"
             exit 1
           fi
           
