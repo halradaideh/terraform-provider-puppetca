@@ -1,0 +1,190 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
+      - paramTypeCombine  # Allow multiple string parameters for Terraform patterns
+      - hugeParam         # Allow large structs as parameters (Terraform framework requirement)
+  
+  gocyclo:
+    min-complexity: 15
+  
+  gofmt:
+    simplify: true
+  
+  goimports:
+    local-prefixes: github.com/halradaideh/terraform-provider-puppetca
+  
+  revive:
+    min-confidence: 0.8
+    rules:
+      - name: package-comments
+        disabled: true  # Allow missing package comments for internal packages
+      - name: exported
+        disabled: true  # Allow unexported public functions for internal packages
+      - name: unused-parameter
+        disabled: true  # Allow unused parameters in Terraform framework methods
+  
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+      - shadow
+  
+  lll:
+    line-length: 160
+  
+  misspell:
+    locale: US
+  
+  nakedret:
+    max-func-lines: 30
+  
+  funlen:
+    lines: 80
+    statements: 50
+  
+  unused:
+    check-exported: false
+  
+  whitespace:
+    multi-if: false
+    multi-func: false
+
+linters:
+  enable:
+    - bodyclose
+    - dogsled
+    - dupl
+    - errcheck
+    - exhaustive
+    - funlen
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
+    - rowserrcheck
+    - staticcheck
+    - stylecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+  
+  disable:
+    - gochecknoinits
+    - exportloopref  # Deprecated in newer versions
+    - gomnd          # Not available in v1.54.2
+    - typecheck      # Disable typecheck as it may fail in CI without proper module resolution
+
+issues:
+  exclude-files:
+    - ".*\\.pb\\.go$"
+  exclude-dirs:
+    - vendor
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - funlen
+    
+    # Exclude known linter issues
+    - text: "weak cryptographic primitive"
+      linters:
+        - gosec
+    
+    # Exclude lll issues for long lines in comments
+    - source: "^//.*"
+      linters:
+        - lll
+    
+    # Allow missing package comments for internal packages
+    - text: "should have a package comment"
+      linters:
+        - revive
+        - stylecheck
+      path: "internal/"
+    
+    # Allow missing comments for exported functions in internal packages
+    - text: "exported (function|method|type|var) .* should have comment or be unexported"
+      linters:
+        - revive
+        - stylecheck
+      path: "internal/"
+    
+    # Allow struct field naming for Terraform schema compatibility
+    - text: "struct field `?Url`? should be `?URL`?"
+      linters:
+        - stylecheck
+        - revive
+    
+    # Allow unused parameters in Terraform framework methods
+    - text: "parameter .* seems to be unused"
+      linters:
+        - revive
+      path: "internal/"
+    
+    # Allow paramTypeCombine for Terraform patterns
+    - text: "paramTypeCombine:"
+      linters:
+        - gocritic
+    
+    # Allow hugeParam for Terraform framework structs
+    - text: "hugeParam:"
+      linters:
+        - gocritic
+    
+    # Exclude typecheck issues that may occur in CI
+    - text: "undefined:"
+      linters:
+        - typecheck
+  
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+
+severity:
+  default-severity: error
+  case-sensitive: false 
