@@ -122,15 +122,6 @@ func (r *Certificate) Create(ctx context.Context, req resource.CreateRequest, re
 			return
 		}
 
-		// Optionally sign the certificate if requested
-		if sign {
-			err = signCert(ctx, r.provider.Client(), nodeName, environment)
-			if err != nil {
-				resp.Diagnostics.AddError("Failed to sign certificate", "Reason: "+err.Error())
-				return
-			}
-		}
-
 		// Retrieve the signed certificate
 		certificate, err = getCert(ctx, r.provider.Client(), nodeName, environment)
 	} else {

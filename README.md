@@ -72,7 +72,6 @@ resource "tls_cert_request" "example" {
 resource "puppetca_certificate" "csr_example" {
   name = "foo.example.com"
   csr  = tls_cert_request.example.cert_request_pem
-  sign = true
 
   timeouts {
     create = "60m"
@@ -95,7 +94,7 @@ EOF
 
 The first `puppetca_certificate` resource, `test`, will remove the certificate if a destroy plan is run.
 The second `puppetca_certificate` resource, `ec2instance`, will remove the certificate if Terraform destroys the EC2 instance.
-The third `puppetca_certificate` resource, `csr_example`, will submit a CSR to the Puppet CA and sign it automatically.
+The third `puppetca_certificate` resource, `csr_example`, will submit a CSR to the Puppet CA.
 
 The `usedby` parameter can be populated as a resource parameter to drive the removal of the certificate from the Puppet CA at the desired time.  In the example above, if a Terraform plan has to recreate the EC2 instance, the certificate will be removed when the EC2 instance is destroyed since each EC2 instance is assigned a new instance id.
 
@@ -103,7 +102,7 @@ The `csr` parameter allows you to pass a Certificate Signing Request (CSR) to th
 - A private key is generated using the `tls_private_key` resource.
 - A CSR is created using the `tls_cert_request` resource.
 - The CSR is passed to the `puppetca_certificate` resource using the `csr` attribute.
-- The `sign` parameter ensures the certificate is signed automatically after submission.
+- The certificate will be available after the CSR is processed by the Puppet CA (signing must be done outside of Terraform).
 
 ## Timeouts
 
