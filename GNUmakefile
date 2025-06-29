@@ -2,7 +2,7 @@ TEST?=./...
 GOFMT_FILES?=$$(find . -name '*.go' |grep -v vendor)
 PKG_NAME=puppetca
 PLUGIN_NAME=terraform-provider-puppetca
-PLUGIN_VERSION=1.0.0
+PLUGIN_VERSION=2.2.0
 
 default: build
 

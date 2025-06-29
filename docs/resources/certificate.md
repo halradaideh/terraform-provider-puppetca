@@ -1,7 +1,7 @@
 # Resource: puppetca_certificate
 
 Manages Puppet CA certificates.  
-**New in v1.0.0:** You can now submit a Certificate Signing Request (CSR) directly from Terraform.
+**New in v2.2.0:** You can now submit a Certificate Signing Request (CSR) directly from Terraform.
 
 ## Example Usage
 
@@ -11,7 +11,6 @@ Manages Puppet CA certificates.
 resource "puppetca_certificate" "mycert" {
   name = "myhost.example.com"
   csr  = file("myhost.csr")
-  sign = true
 }
 ```
 
@@ -29,7 +28,6 @@ output "cert" {
 resource "puppetca_certificate" "mycert" {
   name = "myhost.example.com"
   csr  = file("myhost.csr")
-  sign = true
 
   timeouts {
     create = "60m"
@@ -42,8 +40,8 @@ resource "puppetca_certificate" "mycert" {
 ## Argument Reference
 
 - `name` (String, Required): The node name for the certificate.
-- `csr` (String, Optional): The PEM-encoded CSR to submit to the Puppet CA. If omitted, the provider will only attempt to retrieve or sign an existing CSR.
-- `sign` (Bool, Optional): Whether to sign the certificate after CSR submission. Defaults to `false`.
+- `csr` (String, Optional): The PEM-encoded CSR to submit to the Puppet CA. If omitted, the provider will only attempt to retrieve or sign an existing certificate request. Cannot be used together with `sign`.
+- `sign` (Bool, Optional): Whether to sign an existing certificate request. Defaults to `false`. Cannot be used together with `csr`.
 - `env` (String, Optional): Puppet environment name.
 - `usedby` (String, Optional): An optional string to indicate who or what uses this certificate.
 
@@ -68,4 +66,5 @@ terraform import puppetca_certificate.example "nodename,environment"
 ## Notes
 
 - The `csr` field must contain a valid PEM-encoded CSR. Use `file("path/to/file.csr")` to load from disk.
-- If `sign` is `true`, the provider will attempt to sign the submitted CSR after submission.
+- The `csr` and `sign` attributes cannot be used together. Use `csr` to submit a new certificate request, or use `sign` to sign an existing certificate request.
+- When using `csr`, the certificate signing must be handled outside of Terraform (e.g., through Puppet CA admin tools).
