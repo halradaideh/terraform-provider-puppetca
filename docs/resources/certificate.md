@@ -1,7 +1,7 @@
 # Resource: puppetca_certificate
 
 Manages Puppet CA certificates.  
-**New in v1.0.0:** You can now submit a Certificate Signing Request (CSR) directly from Terraform.
+**New in v2.2.0:** You can now submit a Certificate Signing Request (CSR) directly from Terraform.
 
 ## Example Usage
 

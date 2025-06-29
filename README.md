@@ -106,7 +106,7 @@ The `csr` parameter allows you to pass a Certificate Signing Request (CSR) to th
 
 ## Timeouts
 
-**New in v1.0.0:** The provider now supports configurable timeouts for certificate operations to prevent hanging operations.
+**New in v2.2.0:** The provider now supports configurable timeouts for certificate operations to prevent hanging operations.
 
 ```hcl
 resource "puppetca_certificate" "example" {
@@ -214,7 +214,7 @@ terraform {
   required_providers {
     puppetca = {
       source  = "local/puppetca/puppetca"
-      version = "1.0.0"
+      version = "2.2.0"
     }
     tls = {
       source  = "hashicorp/tls"
