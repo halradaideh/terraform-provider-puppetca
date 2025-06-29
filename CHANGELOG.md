@@ -1,3 +1,10 @@
+## 2.2.0 (TBD)
+
+- Fix: Remove dead code in CSR submission logic that could never execute
+- Fix: Correct documentation examples that contradicted validation logic  
+- Fix: Update all version references to be consistent
+- Improvement: Clarify CSR and sign parameter usage in documentation
+
 ## 2.0.0 (Oct 30, 2023)
 
 - Rewrite provider to switch from the old Terraform Plugin SDKv1 to the new Terraform Plugin Framework
