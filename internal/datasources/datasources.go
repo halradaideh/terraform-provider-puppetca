@@ -1,8 +1,9 @@
 package datasources
 
 import (
-	"github.com/camptocamp/terraform-provider-puppetca/internal/provider"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+
+	"github.com/halradaideh/terraform-provider-puppetca/internal/provider"
 )
 
 var (

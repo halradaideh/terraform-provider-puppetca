@@ -5,10 +5,11 @@ import (
 	"flag"
 	"log"
 
-	"github.com/camptocamp/terraform-provider-puppetca/internal/datasources"
-	"github.com/camptocamp/terraform-provider-puppetca/internal/provider"
-	"github.com/camptocamp/terraform-provider-puppetca/internal/resources"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+
+	"github.com/halradaideh/terraform-provider-puppetca/internal/datasources"
+	"github.com/halradaideh/terraform-provider-puppetca/internal/provider"
+	"github.com/halradaideh/terraform-provider-puppetca/internal/resources"
 )
 
 var (

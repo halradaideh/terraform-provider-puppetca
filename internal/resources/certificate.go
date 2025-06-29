@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/camptocamp/go-puppetca/puppetca"
-	"github.com/camptocamp/terraform-provider-puppetca/internal/log"
-	"github.com/camptocamp/terraform-provider-puppetca/internal/provider"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,6 +15,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+
+	"github.com/halradaideh/terraform-provider-puppetca/internal/log"
+	"github.com/halradaideh/terraform-provider-puppetca/internal/provider"
 )
 
 type Certificate struct {

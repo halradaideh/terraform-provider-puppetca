@@ -1,4 +1,4 @@
-module github.com/camptocamp/terraform-provider-puppetca
+module github.com/halradaideh/terraform-provider-puppetca
 
 go 1.20
 
